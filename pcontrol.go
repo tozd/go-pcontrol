@@ -1,4 +1,4 @@
-// Package pcontrol allow you to attach to a running process and call system calls from inside the attached process.
+// Package pcontrol allows you to attach to a running process and call system calls from inside the attached process.
 //
 // It works on Linux and internally uses ptrace.
 package pcontrol

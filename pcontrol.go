@@ -20,9 +20,9 @@ import (
 const (
 	// These errno values are not really meant for user space programs (so they are not defined
 	// in unix package) but we need them as we operate on a lower level and handle them in doSyscall.
-	_ERESTARTSYS    = unix.Errno(512)
-	_ERESTARTNOINTR = unix.Errno(513)
-	_ERESTARTNOHAND = unix.Errno(514)
+	_ERESTARTSYS    = unix.Errno(512) //nolint: revive,stylecheck
+	_ERESTARTNOINTR = unix.Errno(513) //nolint: revive,stylecheck
+	_ERESTARTNOHAND = unix.Errno(514) //nolint: revive,stylecheck
 )
 
 // Errors are returned as negative numbers from syscalls but we compare them as uint64.

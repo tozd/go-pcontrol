@@ -55,8 +55,8 @@ func ExampleProcess_SysGetpid() {
 	if e != nil {
 		panic(e)
 	}
-	defer cmd.Process.Wait()
-	defer cmd.Process.Kill()
+	defer cmd.Process.Wait() //nolint:errcheck
+	defer cmd.Process.Kill() //nolint:errcheck
 
 	p := Process{
 		Pid: cmd.Process.Pid,
@@ -66,7 +66,7 @@ func ExampleProcess_SysGetpid() {
 		panic(err)
 	}
 	defer func() {
-		err := p.Detach()
+		err = p.Detach()
 		if err != nil {
 			panic(err)
 		}

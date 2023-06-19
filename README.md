@@ -5,7 +5,7 @@
 [![pipeline status](https://gitlab.com/tozd/go/pcontrol/badges/main/pipeline.svg?ignore_skipped=true)](https://gitlab.com/tozd/go/pcontrol/-/pipelines)
 [![coverage report](https://gitlab.com/tozd/go/pcontrol/badges/main/coverage.svg)](https://gitlab.com/tozd/go/pcontrol/-/graphs/main/charts)
 
-A Go package allows you to attach to a running process and call system calls from inside the attached process.
+A Go package that allows you to attach to a running process and call system calls from inside the attached process.
 
 It works on Linux and internally uses ptrace.
 

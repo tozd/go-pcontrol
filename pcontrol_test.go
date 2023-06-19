@@ -27,7 +27,7 @@ func TestNewMsghrd(t *testing.T) {
 }
 
 func TestSysGetpid(t *testing.T) {
-	cmd := exec.Command("/usr/bin/sleep", "infinity")
+	cmd := exec.Command("/bin/sleep", "infinity")
 	e := cmd.Start()
 	require.NoError(t, e)
 	t.Cleanup(func() {
@@ -50,7 +50,7 @@ func TestSysGetpid(t *testing.T) {
 }
 
 func ExampleProcess_SysGetpid() {
-	cmd := exec.Command("/usr/bin/sleep", "infinity")
+	cmd := exec.Command("/bin/sleep", "infinity")
 	e := cmd.Start()
 	if e != nil {
 		panic(e)

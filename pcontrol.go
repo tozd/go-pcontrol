@@ -20,9 +20,10 @@ import (
 const (
 	// These errno values are not really meant for user space programs (so they are not defined
 	// in unix package) but we need them as we operate on a lower level and handle them in doSyscall.
-	_ERESTARTSYS    = unix.Errno(512) //nolint: revive,stylecheck
-	_ERESTARTNOINTR = unix.Errno(513) //nolint: revive,stylecheck
-	_ERESTARTNOHAND = unix.Errno(514) //nolint: revive,stylecheck
+	_ERESTARTSYS           = unix.Errno(512) //nolint: revive,stylecheck
+	_ERESTARTNOINTR        = unix.Errno(513) //nolint: revive,stylecheck
+	_ERESTARTNOHAND        = unix.Errno(514) //nolint: revive,stylecheck
+	_ERESTART_RESTARTBLOCK = unix.Errno(516) //nolint: revive,stylecheck
 )
 
 // Errors are returned as negative numbers from syscalls but we compare them as uint64.
@@ -773,7 +774,6 @@ func (p *Process) syscall(useMemory bool, call int, args func(start uint64) ([]b
 // wrap them with a loop which retries them automatically if interrupted.
 // We do not handle EAGAIN here on purpose, to not block in a loop.
 func (p *Process) doSyscall(useMemory bool, call int, args func(start uint64) ([]byte, [6]uint64, errors.E)) (uint64, errors.E) {
-	// TODO: Handle ERESTART_RESTARTBLOCK as well and call restart_syscall syscall?
 	for {
 		result, err := p.syscall(useMemory, call, args)
 		if err != nil {
@@ -782,6 +782,8 @@ func (p *Process) doSyscall(useMemory bool, call int, args func(start uint64) ([
 			} else if errors.Is(err, _ERESTARTNOINTR) {
 				continue
 			} else if errors.Is(err, _ERESTARTNOHAND) {
+				continue
+			} else if errors.Is(err, _ERESTART_RESTARTBLOCK) {
 				continue
 			} else if errors.Is(err, unix.EINTR) {
 				continue

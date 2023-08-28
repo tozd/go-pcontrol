@@ -307,9 +307,9 @@ func (p *Process) GetFds(processFds []int) (hostFds []int, err errors.E) {
 
 // SetFd does a cross-process duplication of a file descriptor from this (host) process into the (attached) process.
 //
-// It uses an abstract unix domain socket to send hostFd to the process and then dup2 syscall
+// It uses an abstract unix domain socket to send hostFd to the process and then dup3 syscall
 // to set that file descriptor to processFd in the process (any previous processFd is closed
-// by dup2).
+// by dup3).
 //
 // You should close hostFd afterwards if it is not needed anymore in this (host) process.
 // Same for processFd in the (attached) process.
@@ -390,7 +390,7 @@ func (p *Process) SetFd(hostFd int, processFd int) (err errors.E) {
 
 	fd := fds[0]
 
-	err = p.SysDup2(fd, processFd)
+	err = p.SysDup3(fd, processFd)
 	if err != nil {
 		return err
 	}
@@ -514,16 +514,17 @@ func (p *Process) SysAccept(fd, flags int) (int, errors.E) {
 	return int(connFd), err
 }
 
-// SysDup2 invokes dup2 syscall in the (attached) process.
-func (p *Process) SysDup2(oldFd, newFd int) errors.E {
-	_, err := p.doSyscall(true, unix.SYS_DUP2, func(start uint64) ([]byte, [6]uint64, errors.E) {
+// SysDup3 invokes dup3 syscall in the (attached) process.
+func (p *Process) SysDup3(oldFd, newFd int) errors.E {
+	_, err := p.doSyscall(true, unix.SYS_DUP3, func(start uint64) ([]byte, [6]uint64, errors.E) {
 		return nil, [6]uint64{
 			uint64(oldFd), // oldfd.
 			uint64(newFd), // newfd.
+			0,             // flags.
 		}, nil
 	})
 	if err != nil {
-		err = errors.Errorf("sys dup2: %w", err)
+		err = errors.Errorf("sys dup3: %w", err)
 	}
 	return err
 }

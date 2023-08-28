@@ -40,77 +40,73 @@ const DefaultMemorySize = 4096
 // We want to return -1 as uint64 so we need a variable to make Go happy.
 var errorReturn = -1
 
-// Call a syscall and a breakpoint. We do not use ptrace single step but ptrace cont
-// until a breakpoint so that it is easier to allow signal handlers in process to run.
-var syscallInstruction = [...]byte{0x0F, 0x05, 0xCC}
-
 func newMsghrd(start uint64, iov, control []byte) (uint64, []byte, errors.E) {
 	buf := new(bytes.Buffer)
 	// We build unix.Iovec.Base in the buffer.
-	e := binary.Write(buf, binary.LittleEndian, iov)
+	e := binary.Write(buf, binary.NativeEndian, iov)
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
 	// We build unix.Msghdr.Control in the buffer.
-	e = binary.Write(buf, binary.LittleEndian, control)
+	e = binary.Write(buf, binary.NativeEndian, control)
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
 	// We build unix.Iovec in the buffer.
 	// Base field.
-	e = binary.Write(buf, binary.LittleEndian, start)
+	e = binary.Write(buf, binary.NativeEndian, start)
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
 	// Len field.
-	e = binary.Write(buf, binary.LittleEndian, uint64(len(iov)))
+	e = binary.Write(buf, binary.NativeEndian, uint64(len(iov)))
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
 	offset := uint64(buf.Len())
 	// We build unix.Msghdr in the buffer.
 	// Name field. Null pointer.
-	e = binary.Write(buf, binary.LittleEndian, uint64(0))
+	e = binary.Write(buf, binary.NativeEndian, uint64(0))
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
 	// Namelen field.
-	e = binary.Write(buf, binary.LittleEndian, uint32(0))
+	e = binary.Write(buf, binary.NativeEndian, uint32(0))
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
 	// Pad_cgo_0 field.
-	e = binary.Write(buf, binary.LittleEndian, [4]byte{})
+	e = binary.Write(buf, binary.NativeEndian, [4]byte{})
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
 	// Iov field.
-	e = binary.Write(buf, binary.LittleEndian, start+uint64(len(iov))+uint64(len(control)))
+	e = binary.Write(buf, binary.NativeEndian, start+uint64(len(iov))+uint64(len(control)))
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
 	// Iovlen field.
-	e = binary.Write(buf, binary.LittleEndian, uint64(1))
+	e = binary.Write(buf, binary.NativeEndian, uint64(1))
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
 	// Control field.
-	e = binary.Write(buf, binary.LittleEndian, start+uint64(len(iov)))
+	e = binary.Write(buf, binary.NativeEndian, start+uint64(len(iov)))
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
 	// Controllen field.
-	e = binary.Write(buf, binary.LittleEndian, uint64(len(control)))
+	e = binary.Write(buf, binary.NativeEndian, uint64(len(control)))
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
 	// Flags field.
-	e = binary.Write(buf, binary.LittleEndian, int32(0))
+	e = binary.Write(buf, binary.NativeEndian, int32(0))
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
 	// Pad_cgo_1 field.
-	e = binary.Write(buf, binary.LittleEndian, [4]byte{})
+	e = binary.Write(buf, binary.NativeEndian, [4]byte{})
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
@@ -550,7 +546,7 @@ func (p *Process) connectOrBindUnix(call int, name string, fd int, path string) 
 		buf := new(bytes.Buffer)
 		// We build unix.RawSockaddrUnix in the buffer.
 		// Family field.
-		e := binary.Write(buf, binary.LittleEndian, uint16(unix.AF_UNIX))
+		e := binary.Write(buf, binary.NativeEndian, uint16(unix.AF_UNIX))
 		if e != nil {
 			return nil, [6]uint64{}, errors.WithStack(e)
 		}
@@ -565,13 +561,13 @@ func (p *Process) connectOrBindUnix(call int, name string, fd int, path string) 
 			abstract = true
 		}
 		// Path field.
-		e = binary.Write(buf, binary.LittleEndian, p)
+		e = binary.Write(buf, binary.NativeEndian, p)
 		if e != nil {
 			return nil, [6]uint64{}, errors.WithStack(e)
 		}
 		if !abstract {
 			// If not abstract, then write a null character.
-			e = binary.Write(buf, binary.LittleEndian, uint8(0))
+			e = binary.Write(buf, binary.NativeEndian, uint8(0))
 			if e != nil {
 				return nil, [6]uint64{}, errors.WithStack(e)
 			}
@@ -635,11 +631,11 @@ func (p *Process) SysRecvmsg(fd int, iov, control []byte, flags int) (int, int, 
 		return int(res), 0, 0, errors.Errorf("sys recvmsg: %w", err)
 	}
 	buf := bytes.NewReader(payload)
-	e := binary.Read(buf, binary.LittleEndian, iov) // unix.Iovec.Base.
+	e := binary.Read(buf, binary.NativeEndian, iov) // unix.Iovec.Base.
 	if e != nil {
 		return int(res), 0, 0, errors.Errorf("sys recvmsg: %w", e)
 	}
-	e = binary.Read(buf, binary.LittleEndian, control) // unix.Msghdr.Control.
+	e = binary.Read(buf, binary.NativeEndian, control) // unix.Msghdr.Control.
 	if e != nil {
 		return int(res), 0, 0, errors.Errorf("sys recvmsg: %w", e)
 	}
@@ -652,12 +648,12 @@ func (p *Process) SysRecvmsg(fd int, iov, control []byte, flags int) (int, int, 
 	_, _ = io.CopyN(io.Discard, buf, 8) // Iovlen field.
 	_, _ = io.CopyN(io.Discard, buf, 8) // Control field.
 	var controln uint64
-	e = binary.Read(buf, binary.LittleEndian, &controln) // Controllen field.
+	e = binary.Read(buf, binary.NativeEndian, &controln) // Controllen field.
 	if e != nil {
 		return int(res), 0, 0, errors.Errorf("sys recvmsg: %w", e)
 	}
 	var recvflags int32
-	e = binary.Read(buf, binary.LittleEndian, &recvflags) // Flags field.
+	e = binary.Read(buf, binary.NativeEndian, &recvflags) // Flags field.
 	if e != nil {
 		return int(res), 0, 0, errors.Errorf("sys recvmsg: %w", e)
 	}
@@ -673,10 +669,10 @@ func (p *Process) syscall(useMemory bool, call int, args func(start uint64) ([]b
 		return uint64(errorReturn), errors.Errorf("process not attached")
 	}
 
-	var originalRegs unix.PtraceRegs
-	err = errors.WithStack(unix.PtraceGetRegs(p.Pid, &originalRegs))
+	var originalRegs processRegs
+	originalRegs, err = getProcessRegs(p.Pid)
 	if err != nil {
-		return uint64(errorReturn), errors.Errorf("ptrace getregs: %w", err)
+		return uint64(errorReturn), err
 	}
 
 	var start uint64
@@ -694,8 +690,8 @@ func (p *Process) syscall(useMemory bool, call int, args func(start uint64) ([]b
 			return uint64(errorReturn), errors.Errorf("syscall payload (%d B) is larger than available memory (%d B)", len(payload), availableMemory)
 		}
 	} else {
-		// TODO: What happens if Rip is not 64bit aligned?
-		start = originalRegs.Rip
+		// TODO: What happens if PC is not 64bit aligned?
+		start = getProcessPC(&originalRegs)
 		payload, arguments, err = args(start)
 		if err != nil {
 			return uint64(errorReturn), err
@@ -709,7 +705,7 @@ func (p *Process) syscall(useMemory bool, call int, args func(start uint64) ([]b
 	}
 
 	defer func() {
-		err2 := errors.WithStack(unix.PtraceSetRegs(p.Pid, &originalRegs))
+		err2 := setProcessRegs(p.Pid, &originalRegs)
 		err = errors.Join(err, err2)
 	}()
 
@@ -731,20 +727,11 @@ func (p *Process) syscall(useMemory bool, call int, args func(start uint64) ([]b
 		return uint64(errorReturn), err
 	}
 
-	var resultRegs unix.PtraceRegs
-	newRegs := originalRegs
-	newRegs.Rip = instructionPointer
-	newRegs.Rax = uint64(call)
-	newRegs.Rdi = arguments[0]
-	newRegs.Rsi = arguments[1]
-	newRegs.Rdx = arguments[2]
-	newRegs.R10 = arguments[3]
-	newRegs.R8 = arguments[4]
-	newRegs.R9 = arguments[5]
+	newRegs := newSyscallRegs(&originalRegs, instructionPointer, call, arguments[0], arguments[1], arguments[2], arguments[3], arguments[4], arguments[5])
 
-	err = errors.WithStack(unix.PtraceSetRegs(p.Pid, &newRegs))
+	err = setProcessRegs(p.Pid, &newRegs)
 	if err != nil {
-		return uint64(errorReturn), errors.Errorf("ptrace setregs: %w", err)
+		return uint64(errorReturn), err
 	}
 
 	err = p.runToBreakpoint()
@@ -752,13 +739,15 @@ func (p *Process) syscall(useMemory bool, call int, args func(start uint64) ([]b
 		return uint64(errorReturn), err
 	}
 
-	err = errors.WithStack(unix.PtraceGetRegs(p.Pid, &resultRegs))
+	var resultRegs processRegs
+	resultRegs, err = getProcessRegs(p.Pid)
 	if err != nil {
-		return uint64(errorReturn), errors.Errorf("ptrace getregs: %w", err)
+		return uint64(errorReturn), err
 	}
 
-	if resultRegs.Rax > maxErrno {
-		return uint64(errorReturn), errors.WithStack(unix.Errno(-resultRegs.Rax))
+	resReg := getSyscallResultReg(&resultRegs)
+	if resReg > maxErrno {
+		return uint64(errorReturn), errors.WithStack(unix.Errno(-resReg))
 	}
 
 	newPayload, err := p.readData(uintptr(start), len(payload))
@@ -767,7 +756,7 @@ func (p *Process) syscall(useMemory bool, call int, args func(start uint64) ([]b
 	}
 	copy(payload, newPayload)
 
-	return resultRegs.Rax, nil
+	return resReg, nil
 }
 
 // Syscalls can be interrupted by signal handling and might abort. So we

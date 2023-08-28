@@ -43,70 +43,70 @@ var errorReturn = -1
 func newMsghrd(start uint64, iov, control []byte) (uint64, []byte, errors.E) {
 	buf := new(bytes.Buffer)
 	// We build unix.Iovec.Base in the buffer.
-	e := binary.Write(buf, binary.NativeEndian, iov)
+	e := binary.Write(buf, nativeEndian, iov)
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
 	// We build unix.Msghdr.Control in the buffer.
-	e = binary.Write(buf, binary.NativeEndian, control)
+	e = binary.Write(buf, nativeEndian, control)
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
 	// We build unix.Iovec in the buffer.
 	// Base field.
-	e = binary.Write(buf, binary.NativeEndian, start)
+	e = binary.Write(buf, nativeEndian, start)
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
 	// Len field.
-	e = binary.Write(buf, binary.NativeEndian, uint64(len(iov)))
+	e = binary.Write(buf, nativeEndian, uint64(len(iov)))
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
 	offset := uint64(buf.Len())
 	// We build unix.Msghdr in the buffer.
 	// Name field. Null pointer.
-	e = binary.Write(buf, binary.NativeEndian, uint64(0))
+	e = binary.Write(buf, nativeEndian, uint64(0))
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
 	// Namelen field.
-	e = binary.Write(buf, binary.NativeEndian, uint32(0))
+	e = binary.Write(buf, nativeEndian, uint32(0))
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
 	// Pad_cgo_0 field.
-	e = binary.Write(buf, binary.NativeEndian, [4]byte{})
+	e = binary.Write(buf, nativeEndian, [4]byte{})
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
 	// Iov field.
-	e = binary.Write(buf, binary.NativeEndian, start+uint64(len(iov))+uint64(len(control)))
+	e = binary.Write(buf, nativeEndian, start+uint64(len(iov))+uint64(len(control)))
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
 	// Iovlen field.
-	e = binary.Write(buf, binary.NativeEndian, uint64(1))
+	e = binary.Write(buf, nativeEndian, uint64(1))
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
 	// Control field.
-	e = binary.Write(buf, binary.NativeEndian, start+uint64(len(iov)))
+	e = binary.Write(buf, nativeEndian, start+uint64(len(iov)))
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
 	// Controllen field.
-	e = binary.Write(buf, binary.NativeEndian, uint64(len(control)))
+	e = binary.Write(buf, nativeEndian, uint64(len(control)))
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
 	// Flags field.
-	e = binary.Write(buf, binary.NativeEndian, int32(0))
+	e = binary.Write(buf, nativeEndian, int32(0))
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
 	// Pad_cgo_1 field.
-	e = binary.Write(buf, binary.NativeEndian, [4]byte{})
+	e = binary.Write(buf, nativeEndian, [4]byte{})
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
@@ -546,7 +546,7 @@ func (p *Process) connectOrBindUnix(call int, name string, fd int, path string) 
 		buf := new(bytes.Buffer)
 		// We build unix.RawSockaddrUnix in the buffer.
 		// Family field.
-		e := binary.Write(buf, binary.NativeEndian, uint16(unix.AF_UNIX))
+		e := binary.Write(buf, nativeEndian, uint16(unix.AF_UNIX))
 		if e != nil {
 			return nil, [6]uint64{}, errors.WithStack(e)
 		}
@@ -561,13 +561,13 @@ func (p *Process) connectOrBindUnix(call int, name string, fd int, path string) 
 			abstract = true
 		}
 		// Path field.
-		e = binary.Write(buf, binary.NativeEndian, p)
+		e = binary.Write(buf, nativeEndian, p)
 		if e != nil {
 			return nil, [6]uint64{}, errors.WithStack(e)
 		}
 		if !abstract {
 			// If not abstract, then write a null character.
-			e = binary.Write(buf, binary.NativeEndian, uint8(0))
+			e = binary.Write(buf, nativeEndian, uint8(0))
 			if e != nil {
 				return nil, [6]uint64{}, errors.WithStack(e)
 			}
@@ -631,11 +631,11 @@ func (p *Process) SysRecvmsg(fd int, iov, control []byte, flags int) (int, int, 
 		return int(res), 0, 0, errors.Errorf("sys recvmsg: %w", err)
 	}
 	buf := bytes.NewReader(payload)
-	e := binary.Read(buf, binary.NativeEndian, iov) // unix.Iovec.Base.
+	e := binary.Read(buf, nativeEndian, iov) // unix.Iovec.Base.
 	if e != nil {
 		return int(res), 0, 0, errors.Errorf("sys recvmsg: %w", e)
 	}
-	e = binary.Read(buf, binary.NativeEndian, control) // unix.Msghdr.Control.
+	e = binary.Read(buf, nativeEndian, control) // unix.Msghdr.Control.
 	if e != nil {
 		return int(res), 0, 0, errors.Errorf("sys recvmsg: %w", e)
 	}
@@ -648,12 +648,12 @@ func (p *Process) SysRecvmsg(fd int, iov, control []byte, flags int) (int, int, 
 	_, _ = io.CopyN(io.Discard, buf, 8) // Iovlen field.
 	_, _ = io.CopyN(io.Discard, buf, 8) // Control field.
 	var controln uint64
-	e = binary.Read(buf, binary.NativeEndian, &controln) // Controllen field.
+	e = binary.Read(buf, nativeEndian, &controln) // Controllen field.
 	if e != nil {
 		return int(res), 0, 0, errors.Errorf("sys recvmsg: %w", e)
 	}
 	var recvflags int32
-	e = binary.Read(buf, binary.NativeEndian, &recvflags) // Flags field.
+	e = binary.Read(buf, nativeEndian, &recvflags) // Flags field.
 	if e != nil {
 		return int(res), 0, 0, errors.Errorf("sys recvmsg: %w", e)
 	}

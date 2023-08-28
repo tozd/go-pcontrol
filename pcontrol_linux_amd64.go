@@ -4,9 +4,13 @@
 package pcontrol
 
 import (
+	"encoding/binary"
+
 	"gitlab.com/tozd/go/errors"
 	"golang.org/x/sys/unix"
 )
+
+var nativeEndian = binary.LittleEndian
 
 // Call a syscall and a breakpoint. We do not use ptrace single step but ptrace cont
 // until a breakpoint so that it is easier to allow signal handlers in process to run.

@@ -34,54 +34,6 @@ test:
     matrix:
       - IMAGE_TAG: ['1.18-alpine3.17', '1.19-alpine3.18', '1.20-alpine3.18']
 
-test_mac:
-  stage: test
-
-  tags:
-    - saas-macos-medium-m1
-
-  image: macos-13-xcode-14
-
-  variables:
-    HOMEBREW_NO_AUTO_UPDATE: 1
-    HOMEBREW_NO_ENV_HINTS: 1
-    HOMEBREW_NO_INSTALL_CLEANUP: 1
-
-  before_script:
-    # - brew update
-    - brew install colima docker
-    - softwareupdate --install-rosetta --agree-to-license
-    - colima start --vm-type qemu --arch aarch64 --very-verbose --cpu 4 --memory 4 --disk 15 || true
-    - cat /Users/gitlab/.lima/colima/serial*.log
-    - cat /Users/gitlab/.lima/colima/ha.stderr.log
-    - docker info
-    # - wget -O- -nv "https://go.dev/dl/go${GO_VERSION}.darwin-arm64.tar.gz" | sudo tar -C /usr/local -xz
-    # - export PATH=$PATH:/usr/local/go/bin
-    # - export GOPATH=/usr/local/go
-    # - go install gotest.tools/gotestsum@v1.10.1-0.20230612024452-6d535171af0b
-    # - go install github.com/boumenot/gocover-cobertura@v1.2.0
-
-  script:
-    # - make test-ci
-    - "true"
-
-  # artifacts:
-  #   when: always
-  #   reports:
-  #     junit: tests.xml
-  #     coverage_report:
-  #       coverage_format: cobertura
-  #       path: coverage.xml
-  #   paths:
-  #     - coverage.html
-  #   expire_in: never
-
-  # coverage: '/coverage: \d+\.\d+% of statements/'
-
-  # parallel:
-  #   matrix:
-  #     - GO_VERSION: ['1.18.10', '1.19.12', '1.20.7']
-
 lint:
   stage: test
 

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2023-08-31
+
 ### Added
 
 - Support for ARM64 (AArch64) architecture.
@@ -17,7 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - First public release.
 
-[unreleased]: https://gitlab.com/tozd/go/pcontrol/-/compare/v0.1.0...main
+[unreleased]: https://gitlab.com/tozd/go/pcontrol/-/compare/v0.2.0...main
+[0.2.0]: https://gitlab.com/tozd/go/pcontrol/-/compare/v0.1.0...v0.2.0
 [0.1.0]: https://gitlab.com/tozd/go/pcontrol/-/tags/v0.1.0
 
 <!-- markdownlint-disable-file MD024 -->

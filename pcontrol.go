@@ -32,6 +32,8 @@ const maxErrno = uint64(0xfffffffffffff001)
 const (
 	dataSize    = 1024
 	controlSize = 1024
+
+	memoryAlignmentBytes = 8
 )
 
 // DefaultMemorySize is the default memory size of the allocated private working memory when attaching to the process.
@@ -115,6 +117,10 @@ func newMsghrd(start uint64, iov, control []byte) (uint64, []byte, errors.E) {
 		panic(errors.Errorf("Msghdr in buffer does not match the size of Msghdr"))
 	}
 	return offset, buf.Bytes(), nil
+}
+
+func alignMemory(x uint64) uint64 {
+	return ((x + (memoryAlignmentBytes - 1)) / memoryAlignmentBytes) * memoryAlignmentBytes
 }
 
 type Process struct {
@@ -680,6 +686,7 @@ func (p *Process) syscall(useMemory bool, call int, args func(start uint64) ([]b
 
 	var start uint64
 	var payload []byte
+	var payloadLength uint64
 	var arguments [6]uint64
 	var originalInstructions []byte
 	if useMemory {
@@ -688,20 +695,21 @@ func (p *Process) syscall(useMemory bool, call int, args func(start uint64) ([]b
 		if err != nil {
 			return uint64(errorReturn), err
 		}
-		availableMemory := int(p.memorySize()) - len(syscallInstruction)
-		if len(payload) > availableMemory {
-			return uint64(errorReturn), errors.Errorf("syscall payload (%d B) is larger than available memory (%d B)", len(payload), availableMemory)
+		payloadLength = alignMemory(uint64(len(payload)))
+		availableMemory := p.memorySize() - uint64(len(syscallInstruction))
+		if payloadLength > availableMemory {
+			return uint64(errorReturn), errors.Errorf("syscall payload (%d B) is larger than available memory (%d B)", payloadLength, availableMemory)
 		}
 	} else {
-		// TODO: What happens if PC is not 64bit aligned?
-		start = getProcessPC(&originalRegs)
+		start = alignMemory(getProcessPC(&originalRegs))
 		payload, arguments, err = args(start)
 		if err != nil {
 			return uint64(errorReturn), err
 		}
 
+		payloadLength = alignMemory(uint64(len(payload)))
 		// TODO: What if payload is so large that it hits the end of the data section?
-		originalInstructions, err = p.readData(uintptr(start), len(payload)+len(syscallInstruction))
+		originalInstructions, err = p.readData(uintptr(start), int(payloadLength)+len(syscallInstruction))
 		if err != nil {
 			return uint64(errorReturn), err
 		}
@@ -724,7 +732,7 @@ func (p *Process) syscall(useMemory bool, call int, args func(start uint64) ([]b
 		return uint64(errorReturn), err
 	}
 
-	instructionPointer := start + uint64(len(payload))
+	instructionPointer := start + payloadLength
 	err = p.writeData(uintptr(instructionPointer), syscallInstruction[:])
 	if err != nil {
 		return uint64(errorReturn), err

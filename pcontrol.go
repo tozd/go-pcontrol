@@ -425,6 +425,9 @@ func (p *Process) allocateMemory() (uint64, errors.E) {
 	if err != nil {
 		err = errors.Errorf("allocate memory: %w", err)
 	}
+	if addr == 0 {
+		err = errors.New("allocate memory: invalid result")
+	}
 	return addr, err
 }
 

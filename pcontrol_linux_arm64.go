@@ -12,9 +12,9 @@ import (
 
 var nativeEndian = binary.LittleEndian
 
-// Call a syscall and a breakpoint. We do not use ptrace single step but ptrace cont
+// Call a syscall (svc #0) and a breakpoint (brk #0). We do not use ptrace single step but ptrace cont
 // until a breakpoint so that it is easier to allow signal handlers in process to run.
-var syscallInstruction = [...]byte{0xEF, 0x00, 0x00, 0x00, 0xE7, 0xF0, 0x01, 0xF0}
+var syscallInstruction = [...]byte{0xD4, 0x00, 0x00, 0x01, 0xD4, 0x20, 0x00, 0x00}
 
 type processRegs unix.PtraceRegs
 

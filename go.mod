@@ -1,10 +1,10 @@
 module gitlab.com/tozd/go/pcontrol
 
-go 1.20
+go 1.18
 
 require (
 	github.com/google/uuid v1.3.0
-	gitlab.com/tozd/go/errors v0.5.0
+	gitlab.com/tozd/go/errors v0.6.0
 )
 
 require (

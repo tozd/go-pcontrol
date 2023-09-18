@@ -12,6 +12,8 @@ import (
 )
 
 func TestNewMsghrd(t *testing.T) {
+	t.Parallel()
+
 	iov := []byte{1, 2, 3}
 	control := []byte{4, 5, 6}
 	offset, data, err := newMsghrd(42, iov, control)
@@ -27,6 +29,8 @@ func TestNewMsghrd(t *testing.T) {
 }
 
 func TestSysGetpid(t *testing.T) {
+	t.Parallel()
+
 	cmd := exec.Command("/bin/sleep", "infinity")
 	e := cmd.Start()
 	require.NoError(t, e)
@@ -129,6 +133,8 @@ func startProcess(t *testing.T) (*exec.Cmd, *os.File, *os.File, *os.File, *os.Fi
 }
 
 func TestGetFds(t *testing.T) {
+	t.Parallel()
+
 	cmd, stdinWriter, stdoutWriter1, stderrWriter1, stdoutWriter2, stderrWriter2, stdout2, stderr2 := startProcess(t)
 
 	waited := false
@@ -175,6 +181,8 @@ func TestGetFds(t *testing.T) {
 }
 
 func TestSetFd(t *testing.T) {
+	t.Parallel()
+
 	cmd, stdinWriter, stdoutWriter1, stderrWriter1, stdoutWriter2, stderrWriter2, stdout2, stderr2 := startProcess(t)
 
 	waited := false

@@ -40,7 +40,7 @@ const (
 const DefaultMemorySize = 4096
 
 // We want to return -1 as uint64 so we need a variable to make Go happy.
-var errorReturn = -1
+var errorReturn = -1 //nolint:gochecknoglobals
 
 func newMsghrd(start uint64, iov, control []byte) (uint64, []byte, errors.E) {
 	buf := new(bytes.Buffer)
@@ -113,7 +113,7 @@ func newMsghrd(start uint64, iov, control []byte) (uint64, []byte, errors.E) {
 		return 0, nil, errors.WithStack(e)
 	}
 	// Sanity check.
-	if uint64(buf.Len())-offset != uint64(unsafe.Sizeof(unix.Msghdr{})) {
+	if uint64(buf.Len())-offset != uint64(unsafe.Sizeof(unix.Msghdr{})) { //nolint:exhaustruct
 		panic(errors.Errorf("Msghdr in buffer does not match the size of Msghdr"))
 	}
 	return offset, buf.Bytes(), nil
@@ -211,7 +211,7 @@ func (p *Process) Detach() errors.E {
 //
 // You should close processFds afterwards if they are not needed anymore in the (attached) process.
 // Same for hostFds in this (host) process.
-func (p *Process) GetFds(processFds []int) (hostFds []int, err errors.E) {
+func (p *Process) GetFds(processFds []int) (hostFds []int, err errors.E) { //nolint:nonamedreturns
 	if p.memoryAddress == 0 {
 		return nil, errors.Errorf("process not attached")
 	}
@@ -316,7 +316,7 @@ func (p *Process) GetFds(processFds []int) (hostFds []int, err errors.E) {
 //
 // You should close hostFd afterwards if it is not needed anymore in this (host) process.
 // Same for processFd in the (attached) process.
-func (p *Process) SetFd(hostFd int, processFd int) (err errors.E) {
+func (p *Process) SetFd(hostFd int, processFd int) (err errors.E) { //nolint:nonamedreturns
 	if p.memoryAddress == 0 {
 		return errors.Errorf("process not attached")
 	}
@@ -582,7 +582,7 @@ func (p *Process) connectOrBindUnix(call int, name string, fd int, path string) 
 			}
 		}
 		// Sanity check.
-		if uint64(buf.Len()) > uint64(unsafe.Sizeof(unix.RawSockaddrUnix{})) {
+		if uint64(buf.Len()) > uint64(unsafe.Sizeof(unix.RawSockaddrUnix{})) { //nolint:exhaustruct
 			return nil, [6]uint64{}, errors.Errorf("path too long")
 		}
 		payload := buf.Bytes()
@@ -673,7 +673,7 @@ func (p *Process) SysRecvmsg(fd int, iov, control []byte, flags int) (int, int, 
 // In almost all cases you want to use it with useMemory set to true to
 // not change code of the process to run a syscall. (We use useMemory set
 // to false only to obtain and free such memory.)
-func (p *Process) syscall(useMemory bool, call int, args func(start uint64) ([]byte, [6]uint64, errors.E)) (result uint64, err errors.E) {
+func (p *Process) syscall(useMemory bool, call int, args func(start uint64) ([]byte, [6]uint64, errors.E)) (result uint64, err errors.E) { //nolint:nonamedreturns
 	if useMemory && p.memoryAddress == 0 {
 		return uint64(errorReturn), errors.Errorf("process not attached")
 	}

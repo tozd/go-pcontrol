@@ -10,11 +10,11 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-var nativeEndian = binary.LittleEndian
+var nativeEndian = binary.LittleEndian //nolint:gochecknoglobals
 
 // Call a syscall and a breakpoint. We do not use ptrace single step but ptrace cont
 // until a breakpoint so that it is easier to allow signal handlers in process to run.
-var syscallInstruction = [...]byte{0x0F, 0x05, 0xCC}
+var syscallInstruction = [...]byte{0x0F, 0x05, 0xCC} //nolint:gochecknoglobals
 
 type processRegs unix.PtraceRegs
 
@@ -22,7 +22,7 @@ func getProcessRegs(pid int) (processRegs, errors.E) {
 	var regs unix.PtraceRegs
 	err := errors.WithStack(unix.PtraceGetRegs(pid, &regs))
 	if err != nil {
-		return processRegs{}, errors.Errorf("ptrace getregs: %w", err)
+		return processRegs{}, errors.Errorf("ptrace getregs: %w", err) //nolint:exhaustruct
 	}
 	return processRegs(regs), nil
 }

@@ -832,7 +832,7 @@ func (p *Process) readData(address uintptr, length int) ([]byte, errors.E) {
 	if n != length {
 		return nil, errors.WithDetails(
 			ErrUnexpectedRead,
-			"wanted", length,
+			"expected", length,
 			"read", n,
 		)
 	}
@@ -848,7 +848,7 @@ func (p *Process) writeData(address uintptr, data []byte) errors.E {
 	if n != len(data) {
 		return errors.WithDetails(
 			ErrUnexpectedRead,
-			"wanted", len(data),
+			"expected", len(data),
 			"written", n,
 		)
 	}

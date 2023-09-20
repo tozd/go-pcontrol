@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/google/uuid v1.3.0
-	gitlab.com/tozd/go/errors v0.6.0
+	gitlab.com/tozd/go/errors v0.7.1
 )
 
 require (

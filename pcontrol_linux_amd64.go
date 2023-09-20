@@ -20,19 +20,16 @@ type processRegs unix.PtraceRegs
 
 func getProcessRegs(pid int) (processRegs, errors.E) {
 	var regs unix.PtraceRegs
-	err := errors.WithStack(unix.PtraceGetRegs(pid, &regs))
+	err := unix.PtraceGetRegs(pid, &regs)
 	if err != nil {
-		return processRegs{}, errors.Errorf("ptrace getregs: %w", err) //nolint:exhaustruct
+		return processRegs{}, errors.WithMessage(err, "ptrace get regs") //nolint:exhaustruct
 	}
 	return processRegs(regs), nil
 }
 
 func setProcessRegs(pid int, regs *processRegs) errors.E {
-	err := errors.WithStack(unix.PtraceSetRegs(pid, (*unix.PtraceRegs)(regs)))
-	if err != nil {
-		return errors.Errorf("ptrace setregs: %w", err)
-	}
-	return nil
+	err := unix.PtraceSetRegs(pid, (*unix.PtraceRegs)(regs))
+	return errors.WithMessage(err, "ptrace set regs")
 }
 
 func newSyscallRegs(originalRegs *processRegs, ip uint64, call int, arg0, arg1, arg2, arg3, arg4, arg5 uint64) processRegs {

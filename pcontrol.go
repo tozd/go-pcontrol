@@ -17,6 +17,15 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+var (
+	ErrProcessAlreadyAttached = errors.Base("process already attached")
+	ErrProcessNotAttached     = errors.Base("process not attached")
+	ErrOutOfMemory            = errors.Base("syscall payload is larger than available memory")
+	ErrUnexpectedRead         = errors.Base("unexpected bytes read")
+	ErrUnexpectedWrite        = errors.Base("unexpected bytes written")
+	ErrUnexpectedWaitStatus   = errors.Base("unexpected wait status")
+)
+
 const (
 	// These errno values are not really meant for user space programs (so they are not defined
 	// in unix package) but we need them as we operate on a lower level and handle them in doSyscall.
@@ -114,7 +123,7 @@ func newMsghrd(start uint64, iov, control []byte) (uint64, []byte, errors.E) {
 	}
 	// Sanity check.
 	if uint64(buf.Len())-offset != uint64(unsafe.Sizeof(unix.Msghdr{})) { //nolint:exhaustruct
-		panic(errors.Errorf("Msghdr in buffer does not match the size of Msghdr"))
+		panic(errors.New("msghdr in buffer does not match the size of msghdr"))
 	}
 	return offset, buf.Bytes(), nil
 }
@@ -137,39 +146,50 @@ type Process struct {
 //
 // While the process is attached to, its regular execution is paused and only
 // signal processing happens in the process.
-func (p *Process) Attach() errors.E {
+func (p *Process) Attach() (errE errors.E) { //nolint:nonamedreturns
 	if p.memoryAddress != 0 {
-		return errors.Errorf("process already attached")
+		return errors.WithDetails(ErrProcessAlreadyAttached, "pid", p.Pid)
 	}
 
 	runtime.LockOSThread()
 
-	err := errors.WithStack(unix.PtraceSeize(p.Pid))
+	err := unix.PtraceSeize(p.Pid)
 	if err != nil {
 		runtime.UnlockOSThread()
-		return errors.Errorf("ptrace seize: %w", err)
+		errE = errors.WithMessage(err, "ptrace seize")
+		errors.Details(errE)["pid"] = p.Pid
+		return errE
 	}
 
-	err = errors.WithStack(unix.PtraceInterrupt(p.Pid))
+	defer func() {
+		if errE != nil {
+			err = unix.PtraceDetach(p.Pid)
+			runtime.UnlockOSThread()
+			if err != nil {
+				errE2 := errors.WithMessage(err, "ptrace detach")
+				errors.Details(errE2)["pid"] = p.Pid
+				errE = errors.Join(errE, errE2)
+			}
+		}
+	}()
+
+	err = unix.PtraceInterrupt(p.Pid)
 	if err != nil {
-		err = errors.Errorf("ptrace interrupt: %w", err)
-		err2 := errors.WithStack(unix.PtraceDetach(p.Pid))
-		runtime.UnlockOSThread()
-		return errors.Join(err, err2)
+		errE = errors.WithMessage(err, "ptrace interrupt")
+		errors.Details(errE)["pid"] = p.Pid
+		return errE
 	}
 
-	err = p.waitTrap(unix.PTRACE_EVENT_STOP)
-	if err != nil {
-		err2 := errors.WithStack(unix.PtraceDetach(p.Pid))
-		runtime.UnlockOSThread()
-		return errors.Join(err, err2)
+	errE = p.waitTrap(unix.PTRACE_EVENT_STOP)
+	if errE != nil {
+		errors.Details(errE)["pid"] = p.Pid
+		return errE
 	}
 
-	address, err := p.allocateMemory()
-	if err != nil {
-		err2 := errors.WithStack(unix.PtraceDetach(p.Pid))
-		runtime.UnlockOSThread()
-		return errors.Join(err, err2)
+	address, errE := p.allocateMemory()
+	if errE != nil {
+		errors.Details(errE)["pid"] = p.Pid
+		return errE
 	}
 
 	p.memoryAddress = address
@@ -180,28 +200,27 @@ func (p *Process) Attach() errors.E {
 // Detach detaches from the process and frees the allocated private working memory in it.
 func (p *Process) Detach() errors.E {
 	if p.memoryAddress == 0 {
-		return errors.Errorf("process not attached")
+		return errors.WithDetails(ErrProcessNotAttached, "pid", p.Pid)
 	}
 
-	err := p.freeMemory(p.memoryAddress)
-	if err != nil {
-		err2 := errors.WithStack(unix.PtraceDetach(p.Pid))
-		runtime.UnlockOSThread()
-		if err2 == nil {
-			p.memoryAddress = 0
-		}
-		return errors.Join(err, err2)
+	errE1 := p.freeMemory(p.memoryAddress)
+	if errE1 != nil {
+		errors.Details(errE1)["pid"] = p.Pid
+		// We do not return the error here, we try to detatch the process as well.
 	}
 
-	err = errors.WithStack(unix.PtraceDetach(p.Pid))
+	err := unix.PtraceDetach(p.Pid)
 	runtime.UnlockOSThread()
 	if err != nil {
-		return errors.Errorf("ptrace detach: %w", err)
+		errE2 := errors.WithMessage(err, "ptrace detach")
+		errors.Details(errE2)["pid"] = p.Pid
+		// errE1 can be nil here and then this is the same as return errE2.
+		return errors.Join(errE1, errE2)
 	}
 
 	p.memoryAddress = 0
 
-	return nil
+	return errE1
 }
 
 // GetFds does a cross-process duplication of file descriptors from the (attached) process into this (host) process.
@@ -211,55 +230,55 @@ func (p *Process) Detach() errors.E {
 //
 // You should close processFds afterwards if they are not needed anymore in the (attached) process.
 // Same for hostFds in this (host) process.
-func (p *Process) GetFds(processFds []int) (hostFds []int, err errors.E) { //nolint:nonamedreturns
+func (p *Process) GetFds(processFds []int) (hostFds []int, errE errors.E) { //nolint:nonamedreturns
 	if p.memoryAddress == 0 {
-		return nil, errors.Errorf("process not attached")
+		return nil, errors.WithDetails(ErrProcessNotAttached, "pid", p.Pid)
 	}
 
 	// Address starting with @ signals that this is an abstract unix domain socket.
-	u, e := uuid.NewRandom()
-	if e != nil {
-		return nil, errors.WithStack(e)
+	u, err := uuid.NewRandom()
+	if err != nil {
+		return nil, errors.WithMessage(err, "uuid new")
 	}
 	addr := fmt.Sprintf("@dinit-%s.sock", u.String())
 
-	processSocket, err := p.SysSocket(unix.AF_UNIX, unix.SOCK_STREAM, 0)
-	if err != nil {
-		return nil, err
+	processSocket, errE := p.SysSocket(unix.AF_UNIX, unix.SOCK_STREAM, 0)
+	if errE != nil {
+		return nil, errE
 	}
 	defer func() {
-		err2 := p.SysClose(processSocket)
-		err = errors.Join(err, err2)
+		errE2 := p.SysClose(processSocket)
+		errE = errors.Join(errE, errE2)
 	}()
 
-	err = p.SysBindUnix(processSocket, addr)
-	if err != nil {
-		return nil, err
+	errE = p.SysBindUnix(processSocket, addr)
+	if errE != nil {
+		return nil, errE
 	}
 
-	err = p.SysListen(processSocket, 1)
-	if err != nil {
-		return nil, err
+	errE = p.SysListen(processSocket, 1)
+	if errE != nil {
+		return nil, errE
 	}
 
-	connection, e := net.Dial("unix", addr)
-	if e != nil {
-		return nil, errors.Errorf("dial: %w", e)
+	connection, err := net.Dial("unix", addr)
+	if err != nil {
+		return nil, errors.WithMessage(err, "net dial")
 	}
 	defer connection.Close()
 
 	unixConnection, ok := connection.(*net.UnixConn)
 	if !ok {
-		return nil, errors.Errorf("connection is %T and not net.UnixConn", connection)
+		panic(errors.Errorf("connection is %T and not net.UnixConn", connection))
 	}
 
-	processConnection, err := p.SysAccept(processSocket, 0)
-	if err != nil {
-		return nil, err
+	processConnection, errE := p.SysAccept(processSocket, 0)
+	if errE != nil {
+		return nil, errE
 	}
 	defer func() {
-		err2 := p.SysClose(processConnection)
-		err = errors.Join(err, err2)
+		errE2 := p.SysClose(processConnection)
+		errE = errors.Join(errE, errE2)
 	}()
 
 	for _, processFd := range processFds {
@@ -267,38 +286,38 @@ func (p *Process) GetFds(processFds []int) (hostFds []int, err errors.E) { //nol
 		rights := unix.UnixRights(processFd)
 		// Send it over. Write always returns error on short writes.
 		// We send one byte data just to be sure everything gets through.
-		_, _, err = p.SysSendmsg(processConnection, []byte{0}, rights, 0)
-		if err != nil {
-			if errors.Is(err, unix.EBADF) {
+		_, _, errE = p.SysSendmsg(processConnection, []byte{0}, rights, 0)
+		if errE != nil {
+			if errors.Is(errE, unix.EBADF) {
 				hostFds = append(hostFds, -1)
 				continue
 			}
-			return hostFds, err
+			return hostFds, errE
 		}
 
 		// We could be more precise with needed sizes here, but it is good enough.
 		iov := make([]byte, dataSize)
 		control := make([]byte, controlSize)
 		// TODO: What to do on short reads?
-		_, controln, _, _, e := unixConnection.ReadMsgUnix(iov, control)
-		if e != nil {
-			return hostFds, errors.WithStack(e)
+		_, controln, _, _, err := unixConnection.ReadMsgUnix(iov, control)
+		if err != nil {
+			return hostFds, errors.WithMessage(err, "read msg unix")
 		}
 
 		// The buffer might not been used fully.
 		control = control[:controln]
 
-		cmsgs, e := unix.ParseSocketControlMessage(control)
-		if e != nil {
-			return hostFds, errors.Errorf("ParseSocketControlMessage: %w", e)
+		cmsgs, err := unix.ParseSocketControlMessage(control)
+		if err != nil {
+			return hostFds, errors.WithMessage(err, "parse socket control message")
 		}
 
 		for _, cmsg := range cmsgs {
 			// Break memory aliasing in for loop to make the linter happy.
 			cmsg := cmsg
-			fds, e := unix.ParseUnixRights(&cmsg)
-			if e != nil {
-				return hostFds, errors.Errorf("ParseUnixRights: %w", e)
+			fds, err := unix.ParseUnixRights(&cmsg)
+			if err != nil {
+				return hostFds, errors.WithMessage(err, "parse unix rights")
 			}
 
 			hostFds = append(hostFds, fds...)
@@ -316,91 +335,91 @@ func (p *Process) GetFds(processFds []int) (hostFds []int, err errors.E) { //nol
 //
 // You should close hostFd afterwards if it is not needed anymore in this (host) process.
 // Same for processFd in the (attached) process.
-func (p *Process) SetFd(hostFd int, processFd int) (err errors.E) { //nolint:nonamedreturns
+func (p *Process) SetFd(hostFd int, processFd int) (errE errors.E) { //nolint:nonamedreturns
 	if p.memoryAddress == 0 {
-		return errors.Errorf("process not attached")
+		return errors.WithDetails(ErrProcessNotAttached, "pid", p.Pid)
 	}
 
 	// Address starting with @ signals that this is an abstract unix domain socket.
-	u, e := uuid.NewRandom()
-	if e != nil {
-		return errors.WithStack(e)
+	u, err := uuid.NewRandom()
+	if err != nil {
+		return errors.WithMessage(err, "uuid new")
 	}
 	addr := fmt.Sprintf("@dinit-%s.sock", u.String())
-	listen, e := net.Listen("unix", addr)
-	if e != nil {
-		return errors.Errorf("listen: %w", e)
+	listen, err := net.Listen("unix", addr)
+	if err != nil {
+		return errors.WithMessage(err, "net listen")
 	}
 	defer listen.Close()
 
 	// SOCK_DGRAM did not work so we use SOCK_STREAM.
 	// See: https://stackoverflow.com/questions/76327509/sending-a-file-descriptor-from-go-to-c
-	processSocket, err := p.SysSocket(unix.AF_UNIX, unix.SOCK_STREAM, 0)
-	if err != nil {
-		return err
+	processSocket, errE := p.SysSocket(unix.AF_UNIX, unix.SOCK_STREAM, 0)
+	if errE != nil {
+		return errE
 	}
 	defer func() {
-		err2 := p.SysClose(processSocket)
-		err = errors.Join(err, err2)
+		errE2 := p.SysClose(processSocket)
+		errE = errors.Join(errE, errE2)
 	}()
 
-	err = p.SysConnectUnix(processSocket, addr)
-	if err != nil {
-		return err
+	errE = p.SysConnectUnix(processSocket, addr)
+	if errE != nil {
+		return errE
 	}
 
-	connection, e := listen.Accept()
-	if e != nil {
-		return errors.Errorf("accept: %w", e)
+	connection, err := listen.Accept()
+	if err != nil {
+		return errors.WithMessage(err, "accept")
 	}
 	defer connection.Close()
 
 	unixConnection, ok := connection.(*net.UnixConn)
 	if !ok {
-		return errors.Errorf("connection is %T and not net.UnixConn", connection)
+		panic(errors.Errorf("connection is %T and not net.UnixConn", connection))
 	}
 
 	// Encode the file descriptor.
 	rights := unix.UnixRights(hostFd)
 	// Send it over. Write always returns error on short writes.
 	// We send one byte data just to be sure everything gets through.
-	_, _, e = unixConnection.WriteMsgUnix([]byte{0}, rights, nil)
-	if e != nil {
-		return errors.WithStack(e)
+	_, _, err = unixConnection.WriteMsgUnix([]byte{0}, rights, nil)
+	if err != nil {
+		return errors.WithMessage(err, "write msg unix")
 	}
 
 	// We could be more precise with needed sizes here, but it is good enough.
 	iov := make([]byte, dataSize)
 	control := make([]byte, controlSize)
 	// TODO: What to do on short reads?
-	_, controln, _, err := p.SysRecvmsg(processSocket, iov, control, 0)
-	if err != nil {
-		return err
+	_, controln, _, errE := p.SysRecvmsg(processSocket, iov, control, 0)
+	if errE != nil {
+		return errE
 	}
 
 	// The buffer might not been used fully.
 	control = control[:controln]
 
-	cmsgs, e := unix.ParseSocketControlMessage(control)
-	if e != nil {
-		return errors.Errorf("ParseSocketControlMessage: %w", e)
+	cmsgs, err := unix.ParseSocketControlMessage(control)
+	if err != nil {
+		return errors.WithMessage(err, "parse socket control message")
 	}
 
-	fds, e := unix.ParseUnixRights(&cmsgs[0])
-	if e != nil {
-		return errors.Errorf("ParseUnixRights: %w", e)
+	fds, err := unix.ParseUnixRights(&cmsgs[0])
+	if err != nil {
+		return errors.WithMessage(err, "parse unix rights")
 	}
 
 	fd := fds[0]
 
-	err = p.SysDup3(fd, processFd)
-	if err != nil {
-		return err
+	errE = p.SysDup3(fd, processFd)
+	if errE != nil {
+		return errE
 	}
 
-	err = p.SysClose(fd)
-	if err != nil {
-		return err
+	errE = p.SysClose(fd)
+	if errE != nil {
+		return errE
 	}
 
 	return nil
@@ -428,13 +447,10 @@ func (p *Process) allocateMemory() (uint64, errors.E) {
 			0,                                                 // offset.
 		}, nil
 	})
-	if err != nil {
-		err = errors.Errorf("allocate memory: %w", err)
-	}
 	if addr == 0 {
-		err = errors.New("allocate memory: invalid result")
+		err = errors.New("invalid result")
 	}
-	return addr, err
+	return addr, errors.WithMessage(err, "allocate memory")
 }
 
 // Free private segment of memory in the process.
@@ -445,10 +461,7 @@ func (p *Process) freeMemory(address uint64) errors.E {
 			p.memorySize(), // length.
 		}, nil
 	})
-	if err != nil {
-		err = errors.Errorf("free memory: %w", err)
-	}
-	return err
+	return errors.WithMessage(err, "free memory")
 }
 
 // Getpid invokes getpid syscall in the (attached) process.
@@ -456,10 +469,7 @@ func (p *Process) SysGetpid() (int, errors.E) {
 	pid, err := p.doSyscall(true, unix.SYS_GETPID, func(start uint64) ([]byte, [6]uint64, errors.E) {
 		return nil, [6]uint64{}, nil
 	})
-	if err != nil {
-		err = errors.Errorf("sys getpid: %w", err)
-	}
-	return int(pid), err
+	return int(pid), errors.WithMessage(err, "sys getpid")
 }
 
 // SysSocket invokes socket syscall in the (attached) process.
@@ -471,10 +481,7 @@ func (p *Process) SysSocket(domain, typ, proto int) (int, errors.E) {
 			uint64(proto),  // protocol.
 		}, nil
 	})
-	if err != nil {
-		err = errors.Errorf("sys socket: %w", err)
-	}
-	return int(fd), err
+	return int(fd), errors.WithMessage(err, "sys socket")
 }
 
 // SysClose invokes close syscall in the (attached) process.
@@ -484,10 +491,7 @@ func (p *Process) SysClose(fd int) errors.E {
 			uint64(fd), // fd.
 		}, nil
 	})
-	if err != nil {
-		err = errors.Errorf("sys close: %w", err)
-	}
-	return err
+	return errors.WithMessage(err, "sys close")
 }
 
 // SysListen invokes listen syscall in the (attached) process.
@@ -498,10 +502,7 @@ func (p *Process) SysListen(fd, backlog int) errors.E {
 			uint64(backlog), // backlog.
 		}, nil
 	})
-	if err != nil {
-		err = errors.Errorf("sys listen: %w", err)
-	}
-	return err
+	return errors.WithMessage(err, "sys listen")
 }
 
 // SysAccept invokes accept syscall in the (attached) process.
@@ -514,10 +515,7 @@ func (p *Process) SysAccept(fd, flags int) (int, errors.E) {
 			uint64(flags), // flags.
 		}, nil
 	})
-	if err != nil {
-		err = errors.Errorf("sys accept: %w", err)
-	}
-	return int(connFd), err
+	return int(connFd), errors.WithMessage(err, "sys accept")
 }
 
 // SysDup3 invokes dup3 syscall in the (attached) process.
@@ -529,10 +527,7 @@ func (p *Process) SysDup3(oldFd, newFd int) errors.E {
 			0,             // flags.
 		}, nil
 	})
-	if err != nil {
-		err = errors.Errorf("sys dup3: %w", err)
-	}
-	return err
+	return errors.WithMessage(err, "sys dup3")
 }
 
 // SysConnectUnix invokes connect syscall in the (attached) process for AF_UNIX socket path.
@@ -555,9 +550,9 @@ func (p *Process) connectOrBindUnix(call int, name string, fd int, path string) 
 		buf := new(bytes.Buffer)
 		// We build unix.RawSockaddrUnix in the buffer.
 		// Family field.
-		e := binary.Write(buf, nativeEndian, uint16(unix.AF_UNIX))
-		if e != nil {
-			return nil, [6]uint64{}, errors.WithStack(e)
+		err := binary.Write(buf, nativeEndian, uint16(unix.AF_UNIX))
+		if err != nil {
+			return nil, [6]uint64{}, errors.WithStack(err)
 		}
 		p := []byte(path)
 		abstract := false
@@ -570,20 +565,20 @@ func (p *Process) connectOrBindUnix(call int, name string, fd int, path string) 
 			abstract = true
 		}
 		// Path field.
-		e = binary.Write(buf, nativeEndian, p)
-		if e != nil {
-			return nil, [6]uint64{}, errors.WithStack(e)
+		err = binary.Write(buf, nativeEndian, p)
+		if err != nil {
+			return nil, [6]uint64{}, errors.WithStack(err)
 		}
 		if !abstract {
 			// If not abstract, then write a null character.
-			e = binary.Write(buf, nativeEndian, uint8(0))
-			if e != nil {
-				return nil, [6]uint64{}, errors.WithStack(e)
+			err = binary.Write(buf, nativeEndian, uint8(0))
+			if err != nil {
+				return nil, [6]uint64{}, errors.WithStack(err)
 			}
 		}
 		// Sanity check.
 		if uint64(buf.Len()) > uint64(unsafe.Sizeof(unix.RawSockaddrUnix{})) { //nolint:exhaustruct
-			return nil, [6]uint64{}, errors.Errorf("path too long")
+			panic(errors.New("path too long"))
 		}
 		payload := buf.Bytes()
 		return payload, [6]uint64{
@@ -592,10 +587,7 @@ func (p *Process) connectOrBindUnix(call int, name string, fd int, path string) 
 			uint64(len(payload)), // addrlen.
 		}, nil
 	})
-	if err != nil {
-		err = errors.Errorf("sys %s unix: %w", name, err)
-	}
-	return err
+	return errors.WithMessagef(err, "sys %s unix", name)
 }
 
 // SysSendmsg invokes sendmsg syscall in the (attached) process.
@@ -614,7 +606,7 @@ func (p *Process) SysSendmsg(fd int, iov, control []byte, flags int) (int, int, 
 		}, nil
 	})
 	if err != nil {
-		return int(res), 0, errors.Errorf("sys sendmsg: %w", err)
+		return int(res), 0, errors.WithMessage(err, "sys sendmsg")
 	}
 	return int(res), len(control), nil
 }
@@ -624,7 +616,7 @@ func (p *Process) SysSendmsg(fd int, iov, control []byte, flags int) (int, int, 
 //nolint:gomnd
 func (p *Process) SysRecvmsg(fd int, iov, control []byte, flags int) (int, int, int, errors.E) {
 	var payload []byte
-	res, err := p.doSyscall(true, unix.SYS_RECVMSG, func(start uint64) ([]byte, [6]uint64, errors.E) {
+	res, errE := p.doSyscall(true, unix.SYS_RECVMSG, func(start uint64) ([]byte, [6]uint64, errors.E) {
 		offset, pl, err := newMsghrd(start, iov, control)
 		if err != nil {
 			return nil, [6]uint64{}, err
@@ -636,17 +628,17 @@ func (p *Process) SysRecvmsg(fd int, iov, control []byte, flags int) (int, int, 
 			uint64(flags),  // flags.
 		}, nil
 	})
-	if err != nil {
-		return int(res), 0, 0, errors.Errorf("sys recvmsg: %w", err)
+	if errE != nil {
+		return int(res), 0, 0, errors.WithMessage(errE, "sys recvmsg")
 	}
 	buf := bytes.NewReader(payload)
-	e := binary.Read(buf, nativeEndian, iov) // unix.Iovec.Base.
-	if e != nil {
-		return int(res), 0, 0, errors.Errorf("sys recvmsg: %w", e)
+	err := binary.Read(buf, nativeEndian, iov) // unix.Iovec.Base.
+	if err != nil {
+		return int(res), 0, 0, errors.WithMessage(err, "sys recvmsg")
 	}
-	e = binary.Read(buf, nativeEndian, control) // unix.Msghdr.Control.
-	if e != nil {
-		return int(res), 0, 0, errors.Errorf("sys recvmsg: %w", e)
+	err = binary.Read(buf, nativeEndian, control) // unix.Msghdr.Control.
+	if err != nil {
+		return int(res), 0, 0, errors.WithMessage(err, "sys recvmsg")
 	}
 	_, _ = io.CopyN(io.Discard, buf, 8) // unix.Iovec.Base field.
 	_, _ = io.CopyN(io.Discard, buf, 8) // unix.Iovec.Len field.
@@ -657,14 +649,14 @@ func (p *Process) SysRecvmsg(fd int, iov, control []byte, flags int) (int, int, 
 	_, _ = io.CopyN(io.Discard, buf, 8) // Iovlen field.
 	_, _ = io.CopyN(io.Discard, buf, 8) // Control field.
 	var controln uint64
-	e = binary.Read(buf, nativeEndian, &controln) // Controllen field.
-	if e != nil {
-		return int(res), 0, 0, errors.Errorf("sys recvmsg: %w", e)
+	err = binary.Read(buf, nativeEndian, &controln) // Controllen field.
+	if err != nil {
+		return int(res), 0, 0, errors.WithMessage(err, "sys recvmsg")
 	}
 	var recvflags int32
-	e = binary.Read(buf, nativeEndian, &recvflags) // Flags field.
-	if e != nil {
-		return int(res), 0, 0, errors.Errorf("sys recvmsg: %w", e)
+	err = binary.Read(buf, nativeEndian, &recvflags) // Flags field.
+	if err != nil {
+		return int(res), 0, 0, errors.WithMessage(err, "sys recvmsg")
 	}
 	return int(res), int(controln), int(recvflags), nil
 }
@@ -675,12 +667,13 @@ func (p *Process) SysRecvmsg(fd int, iov, control []byte, flags int) (int, int, 
 // to false only to obtain and free such memory.)
 func (p *Process) syscall(useMemory bool, call int, args func(start uint64) ([]byte, [6]uint64, errors.E)) (result uint64, err errors.E) { //nolint:nonamedreturns
 	if useMemory && p.memoryAddress == 0 {
-		return uint64(errorReturn), errors.Errorf("process not attached")
+		return uint64(errorReturn), errors.WithDetails(ErrProcessNotAttached, "pid", p.Pid)
 	}
 
 	var originalRegs processRegs
 	originalRegs, err = getProcessRegs(p.Pid)
 	if err != nil {
+		errors.Details(err)["call"] = call
 		return uint64(errorReturn), err
 	}
 
@@ -693,17 +686,24 @@ func (p *Process) syscall(useMemory bool, call int, args func(start uint64) ([]b
 		start = p.memoryAddress
 		payload, arguments, err = args(p.memoryAddress)
 		if err != nil {
+			errors.Details(err)["call"] = call
 			return uint64(errorReturn), err
 		}
 		payloadLength = alignMemory(uint64(len(payload)))
 		availableMemory := p.memorySize() - uint64(len(syscallInstruction))
 		if payloadLength > availableMemory {
-			return uint64(errorReturn), errors.Errorf("syscall payload (%d B) is larger than available memory (%d B)", payloadLength, availableMemory)
+			return uint64(errorReturn), errors.WithDetails(
+				ErrOutOfMemory,
+				"call", call,
+				"payload", payloadLength,
+				"available", availableMemory,
+			)
 		}
 	} else {
 		start = alignMemory(getProcessPC(&originalRegs))
 		payload, arguments, err = args(start)
 		if err != nil {
+			errors.Details(err)["call"] = call
 			return uint64(errorReturn), err
 		}
 
@@ -711,30 +711,39 @@ func (p *Process) syscall(useMemory bool, call int, args func(start uint64) ([]b
 		// TODO: What if payload is so large that it hits the end of the data section?
 		originalInstructions, err = p.readData(uintptr(start), int(payloadLength)+len(syscallInstruction))
 		if err != nil {
+			errors.Details(err)["call"] = call
 			return uint64(errorReturn), err
 		}
 	}
 
 	defer func() {
 		err2 := setProcessRegs(p.Pid, &originalRegs)
+		if err2 != nil {
+			errors.Details(err2)["call"] = call
+		}
 		err = errors.Join(err, err2)
 	}()
 
 	if !useMemory {
 		defer func() {
 			err2 := p.writeData(uintptr(start), originalInstructions)
+			if err2 != nil {
+				errors.Details(err2)["call"] = call
+			}
 			err = errors.Join(err, err2)
 		}()
 	}
 
 	err = p.writeData(uintptr(start), payload)
 	if err != nil {
+		errors.Details(err)["call"] = call
 		return uint64(errorReturn), err
 	}
 
 	instructionPointer := start + payloadLength
 	err = p.writeData(uintptr(instructionPointer), syscallInstruction[:])
 	if err != nil {
+		errors.Details(err)["call"] = call
 		return uint64(errorReturn), err
 	}
 
@@ -742,27 +751,34 @@ func (p *Process) syscall(useMemory bool, call int, args func(start uint64) ([]b
 
 	err = setProcessRegs(p.Pid, &newRegs)
 	if err != nil {
+		errors.Details(err)["call"] = call
 		return uint64(errorReturn), err
 	}
 
 	err = p.runToBreakpoint()
 	if err != nil {
+		errors.Details(err)["call"] = call
 		return uint64(errorReturn), err
 	}
 
 	var resultRegs processRegs
 	resultRegs, err = getProcessRegs(p.Pid)
 	if err != nil {
+		errors.Details(err)["call"] = call
 		return uint64(errorReturn), err
 	}
 
 	resReg := getSyscallResultReg(&resultRegs)
 	if resReg > maxErrno {
-		return uint64(errorReturn), errors.WithStack(unix.Errno(-resReg))
+		return uint64(errorReturn), errors.WithDetails(
+			unix.Errno(-resReg),
+			"call", call,
+		)
 	}
 
 	newPayload, err := p.readData(uintptr(start), len(payload))
 	if err != nil {
+		errors.Details(err)["call"] = call
 		return uint64(errorReturn), err
 	}
 	copy(payload, newPayload)
@@ -809,24 +825,32 @@ func (p *Process) Syscall(call int, args func(start uint64) ([]byte, [6]uint64, 
 // Read from the memory of the process.
 func (p *Process) readData(address uintptr, length int) ([]byte, errors.E) {
 	data := make([]byte, length)
-	n, e := unix.PtracePeekData(p.Pid, address, data)
-	if e != nil {
-		return nil, errors.Errorf("ptrace peekdata: %w", e)
+	n, err := unix.PtracePeekData(p.Pid, address, data)
+	if err != nil {
+		return nil, errors.WithMessage(err, "ptrace peekdata")
 	}
 	if n != length {
-		return nil, errors.Errorf("wanted to read %d bytes, but read %d bytes", length, n)
+		return nil, errors.WithDetails(
+			ErrUnexpectedRead,
+			"wanted", length,
+			"read", n,
+		)
 	}
 	return data, nil
 }
 
 // Read into the memory of the process.
 func (p *Process) writeData(address uintptr, data []byte) errors.E {
-	n, e := unix.PtracePokeData(p.Pid, address, data)
-	if e != nil {
-		return errors.Errorf("ptrace pokedata: %w", e)
+	n, err := unix.PtracePokeData(p.Pid, address, data)
+	if err != nil {
+		return errors.WithMessage(err, "ptrace pokedata")
 	}
 	if n != len(data) {
-		return errors.Errorf("wanted to write %d bytes, but wrote %d bytes", len(data), n)
+		return errors.WithDetails(
+			ErrUnexpectedRead,
+			"wanted", len(data),
+			"written", n,
+		)
 	}
 	return nil
 }
@@ -837,9 +861,9 @@ func (p *Process) writeData(address uintptr, data []byte) errors.E {
 // of the trustee might run as well before the breakpoint is reached (this is
 // why we use ptrace cont with a breakpoint and not ptrace single step).
 func (p *Process) runToBreakpoint() errors.E {
-	err := errors.WithStack(unix.PtraceCont(p.Pid, 0))
+	err := unix.PtraceCont(p.Pid, 0)
 	if err != nil {
-		return errors.Errorf("run to breakpoint: %w", err)
+		return errors.WithMessage(err, "ptrace cont")
 	}
 
 	// 0 trap cause means a breakpoint or single stepping.
@@ -849,15 +873,15 @@ func (p *Process) runToBreakpoint() errors.E {
 func (p *Process) waitTrap(cause int) errors.E {
 	for {
 		var status unix.WaitStatus
-		var e error
+		var err error
 		for {
-			_, e = unix.Wait4(p.Pid, &status, 0, nil)
-			if e == nil || !errors.Is(e, unix.EINTR) {
+			_, err = unix.Wait4(p.Pid, &status, 0, nil)
+			if err == nil || !errors.Is(err, unix.EINTR) {
 				break
 			}
 		}
-		if e != nil {
-			return errors.Errorf("wait trap: %w", e)
+		if err != nil {
+			return errors.WithMessage(err, "wait4")
 		}
 		// A breakpoint or other trap cause we expected has been reached.
 		if status.TrapCause() == cause {
@@ -872,15 +896,21 @@ func (p *Process) waitTrap(cause int) errors.E {
 			// ptraced any signal it receives stops the process for us to decide what to do about the
 			// signal. In our case we just pass the signal back to the process using ptrace cont and
 			// let its signal handler do its work.
-			err := errors.WithStack(unix.PtraceCont(p.Pid, int(status.StopSignal())))
+			err := unix.PtraceCont(p.Pid, int(status.StopSignal()))
 			if err != nil {
-				return errors.Errorf("wait trap: ptrace cont with %d: %w", int(status.StopSignal()), err)
+				errE := errors.WithMessage(err, "ptrace cont")
+				errors.Details(errE)["stopSignal"] = int(status.StopSignal())
+				return errE
 			}
 			continue
 		}
-		return errors.Errorf(
-			"wait trap: unexpected wait status after wait, exit status %d, signal %d, stop signal %d, trap cause %d, expected trap cause %d",
-			status.ExitStatus(), status.Signal(), status.StopSignal(), status.TrapCause(), cause,
+		return errors.WithDetails(
+			ErrUnexpectedWaitStatus,
+			"exitStatus", status.ExitStatus(),
+			"signal", status.Signal(),
+			"stopSignal", status.StopSignal(),
+			"trapCause", status.TrapCause(),
+			"expectedTrapCause", cause,
 		)
 	}
 }
@@ -888,14 +918,14 @@ func (p *Process) waitTrap(cause int) errors.E {
 // EqualFds returns true if both file descriptors point to the same underlying file.
 func EqualFds(fd1, fd2 int) (bool, errors.E) {
 	var stat1 unix.Stat_t
-	err := errors.WithStack(unix.Fstat(fd1, &stat1))
+	err := unix.Fstat(fd1, &stat1)
 	if err != nil {
-		return false, err
+		return false, errors.WithMessage(err, "fstat")
 	}
 	var stat2 unix.Stat_t
-	err = errors.WithStack(unix.Fstat(fd2, &stat2))
+	err = unix.Fstat(fd2, &stat2)
 	if err != nil {
-		return false, err
+		return false, errors.WithMessage(err, "fstat")
 	}
 	return stat1.Dev == stat2.Dev && stat1.Ino == stat2.Ino && stat1.Rdev == stat2.Rdev, nil
 }

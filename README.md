@@ -20,6 +20,8 @@ This is a Go package. You can add it to your project using `go get`:
 go get gitlab.com/tozd/go/pcontrol
 ```
 
+It requires Go 1.18 or newer.
+
 ## Usage
 
 See full package documentation with examples on [pkg.go.dev](https://pkg.go.dev/gitlab.com/tozd/go/pcontrol#section-documentation).

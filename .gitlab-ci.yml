@@ -18,6 +18,7 @@ test:
     - apk --update add make bash gcc musl-dev
     - (cd /go; go install gotest.tools/gotestsum@v1.10.1)
     - (cd /go; go install github.com/boumenot/gocover-cobertura@v1.2.0)
+    - go version
 
   script:
     - make test-ci

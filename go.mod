@@ -5,8 +5,8 @@ go 1.23
 toolchain go1.23.1
 
 require (
-	github.com/google/uuid v1.3.0
-	gitlab.com/tozd/go/errors v0.7.1
+	github.com/google/uuid v1.6.0
+	gitlab.com/tozd/go/errors v0.9.0
 )
 
 require (
@@ -17,6 +17,6 @@ require (
 
 require (
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/stretchr/testify v1.8.4
-	golang.org/x/sys v0.9.0
+	github.com/stretchr/testify v1.9.0
+	golang.org/x/sys v0.25.0
 )

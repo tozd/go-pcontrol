@@ -17,7 +17,7 @@ func TestNewMsghrd(t *testing.T) {
 	iov := []byte{1, 2, 3}
 	control := []byte{4, 5, 6}
 	offset, data, err := newMsghrd(42, iov, control)
-	assert.NoError(t, err, "% -+#.1v", err)
+	require.NoError(t, err, "% -+#.1v", err)
 	assert.Equal(t, uint64(22), offset)
 	assert.Equal(t, []byte{
 		0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x2a, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x3, 0x0, 0x0, 0x0, 0x0,
@@ -171,12 +171,12 @@ func TestGetFds(t *testing.T) {
 		}
 	})
 
-	equal, err := EqualFds(hostFds[0], int(stdoutWriter1.Fd()))
-	assert.NoError(t, err, "% -+#.1v", err)
+	equal, err := EqualFds(hostFds[0], int(stdoutWriter1.Fd())) //nolint:gosec
+	require.NoError(t, err, "% -+#.1v", err)
 	assert.True(t, equal)
 
-	equal, err = EqualFds(hostFds[1], int(stderrWriter1.Fd()))
-	assert.NoError(t, err, "% -+#.1v", err)
+	equal, err = EqualFds(hostFds[1], int(stderrWriter1.Fd())) //nolint:gosec
+	require.NoError(t, err, "% -+#.1v", err)
 	assert.True(t, equal)
 }
 
@@ -213,9 +213,9 @@ func TestSetFd(t *testing.T) {
 		}
 	})
 
-	err = p.SetFd(int(stdoutWriter2.Fd()), 1)
+	err = p.SetFd(int(stdoutWriter2.Fd()), 1) //nolint:gosec
 	require.NoError(t, err, "% -+#.1v", err)
-	err = p.SetFd(int(stderrWriter2.Fd()), 2)
+	err = p.SetFd(int(stderrWriter2.Fd()), 2) //nolint:gosec
 	require.NoError(t, err, "% -+#.1v", err)
 
 	require.NoError(t, p.Detach(), "% -+#.1v", err)

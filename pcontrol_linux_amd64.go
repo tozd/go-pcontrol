@@ -22,7 +22,7 @@ func getProcessRegs(pid int) (processRegs, errors.E) {
 	var regs unix.PtraceRegs
 	err := unix.PtraceGetRegs(pid, &regs)
 	if err != nil {
-		return processRegs{}, errors.WithMessage(err, "ptrace get regs") //nolint:exhaustruct
+		return processRegs{}, errors.WithMessage(err, "ptrace get regs")
 	}
 	return processRegs(regs), nil
 }

@@ -313,8 +313,6 @@ func (p *Process) GetFds(processFds []int) (hostFds []int, errE errors.E) { //no
 		}
 
 		for _, cmsg := range cmsgs {
-			// Break memory aliasing in for loop to make the linter happy.
-			cmsg := cmsg
 			fds, err := unix.ParseUnixRights(&cmsg)
 			if err != nil {
 				return hostFds, errors.WithMessage(err, "parse unix rights")
@@ -436,7 +434,7 @@ func (p *Process) memorySize() uint64 {
 // the working memory for syscalls. Memory is configured to be
 // executable as well and we store opcodes to run into it as well.
 func (p *Process) allocateMemory() (uint64, errors.E) {
-	addr, err := p.doSyscall(false, unix.SYS_MMAP, func(start uint64) ([]byte, [6]uint64, errors.E) {
+	addr, err := p.doSyscall(false, unix.SYS_MMAP, func(_ uint64) ([]byte, [6]uint64, errors.E) {
 		fd := -1
 		return nil, [6]uint64{
 			0,              // addr.
@@ -455,7 +453,7 @@ func (p *Process) allocateMemory() (uint64, errors.E) {
 
 // Free private segment of memory in the process.
 func (p *Process) freeMemory(address uint64) errors.E {
-	_, err := p.doSyscall(false, unix.SYS_MUNMAP, func(start uint64) ([]byte, [6]uint64, errors.E) {
+	_, err := p.doSyscall(false, unix.SYS_MUNMAP, func(_ uint64) ([]byte, [6]uint64, errors.E) {
 		return nil, [6]uint64{
 			address,        // addr.
 			p.memorySize(), // length.
@@ -466,27 +464,27 @@ func (p *Process) freeMemory(address uint64) errors.E {
 
 // Getpid invokes getpid syscall in the (attached) process.
 func (p *Process) SysGetpid() (int, errors.E) {
-	pid, err := p.doSyscall(true, unix.SYS_GETPID, func(start uint64) ([]byte, [6]uint64, errors.E) {
+	pid, err := p.doSyscall(true, unix.SYS_GETPID, func(_ uint64) ([]byte, [6]uint64, errors.E) {
 		return nil, [6]uint64{}, nil
 	})
-	return int(pid), errors.WithMessage(err, "sys getpid")
+	return int(pid), errors.WithMessage(err, "sys getpid") //nolint:gosec
 }
 
 // SysSocket invokes socket syscall in the (attached) process.
 func (p *Process) SysSocket(domain, typ, proto int) (int, errors.E) {
-	fd, err := p.doSyscall(true, unix.SYS_SOCKET, func(start uint64) ([]byte, [6]uint64, errors.E) {
+	fd, err := p.doSyscall(true, unix.SYS_SOCKET, func(_ uint64) ([]byte, [6]uint64, errors.E) {
 		return nil, [6]uint64{
 			uint64(domain), // domain.
 			uint64(typ),    // type.
 			uint64(proto),  // protocol.
 		}, nil
 	})
-	return int(fd), errors.WithMessage(err, "sys socket")
+	return int(fd), errors.WithMessage(err, "sys socket") //nolint:gosec
 }
 
 // SysClose invokes close syscall in the (attached) process.
 func (p *Process) SysClose(fd int) errors.E {
-	_, err := p.doSyscall(true, unix.SYS_CLOSE, func(start uint64) ([]byte, [6]uint64, errors.E) {
+	_, err := p.doSyscall(true, unix.SYS_CLOSE, func(_ uint64) ([]byte, [6]uint64, errors.E) {
 		return nil, [6]uint64{
 			uint64(fd), // fd.
 		}, nil
@@ -496,7 +494,7 @@ func (p *Process) SysClose(fd int) errors.E {
 
 // SysListen invokes listen syscall in the (attached) process.
 func (p *Process) SysListen(fd, backlog int) errors.E {
-	_, err := p.doSyscall(true, unix.SYS_LISTEN, func(start uint64) ([]byte, [6]uint64, errors.E) {
+	_, err := p.doSyscall(true, unix.SYS_LISTEN, func(_ uint64) ([]byte, [6]uint64, errors.E) {
 		return nil, [6]uint64{
 			uint64(fd),      // sockfd.
 			uint64(backlog), // backlog.
@@ -507,7 +505,7 @@ func (p *Process) SysListen(fd, backlog int) errors.E {
 
 // SysAccept invokes accept syscall in the (attached) process.
 func (p *Process) SysAccept(fd, flags int) (int, errors.E) {
-	connFd, err := p.doSyscall(true, unix.SYS_ACCEPT4, func(start uint64) ([]byte, [6]uint64, errors.E) {
+	connFd, err := p.doSyscall(true, unix.SYS_ACCEPT4, func(_ uint64) ([]byte, [6]uint64, errors.E) {
 		return nil, [6]uint64{
 			uint64(fd),    // sockfd.
 			0,             // addr.
@@ -515,12 +513,12 @@ func (p *Process) SysAccept(fd, flags int) (int, errors.E) {
 			uint64(flags), // flags.
 		}, nil
 	})
-	return int(connFd), errors.WithMessage(err, "sys accept")
+	return int(connFd), errors.WithMessage(err, "sys accept") //nolint:gosec
 }
 
 // SysDup3 invokes dup3 syscall in the (attached) process.
 func (p *Process) SysDup3(oldFd, newFd int) errors.E {
-	_, err := p.doSyscall(true, unix.SYS_DUP3, func(start uint64) ([]byte, [6]uint64, errors.E) {
+	_, err := p.doSyscall(true, unix.SYS_DUP3, func(_ uint64) ([]byte, [6]uint64, errors.E) {
 		return nil, [6]uint64{
 			uint64(oldFd), // oldfd.
 			uint64(newFd), // newfd.
@@ -606,9 +604,9 @@ func (p *Process) SysSendmsg(fd int, iov, control []byte, flags int) (int, int, 
 		}, nil
 	})
 	if err != nil {
-		return int(res), 0, errors.WithMessage(err, "sys sendmsg")
+		return int(res), 0, errors.WithMessage(err, "sys sendmsg") //nolint:gosec
 	}
-	return int(res), len(control), nil
+	return int(res), len(control), nil //nolint:gosec
 }
 
 // SysRecvmsg invokes recvmsg syscall in the (attached) process.
@@ -629,16 +627,16 @@ func (p *Process) SysRecvmsg(fd int, iov, control []byte, flags int) (int, int, 
 		}, nil
 	})
 	if errE != nil {
-		return int(res), 0, 0, errors.WithMessage(errE, "sys recvmsg")
+		return int(res), 0, 0, errors.WithMessage(errE, "sys recvmsg") //nolint:gosec
 	}
 	buf := bytes.NewReader(payload)
 	err := binary.Read(buf, nativeEndian, iov) // unix.Iovec.Base.
 	if err != nil {
-		return int(res), 0, 0, errors.WithMessage(err, "sys recvmsg")
+		return int(res), 0, 0, errors.WithMessage(err, "sys recvmsg") //nolint:gosec
 	}
 	err = binary.Read(buf, nativeEndian, control) // unix.Msghdr.Control.
 	if err != nil {
-		return int(res), 0, 0, errors.WithMessage(err, "sys recvmsg")
+		return int(res), 0, 0, errors.WithMessage(err, "sys recvmsg") //nolint:gosec
 	}
 	_, _ = io.CopyN(io.Discard, buf, 8) // unix.Iovec.Base field.
 	_, _ = io.CopyN(io.Discard, buf, 8) // unix.Iovec.Len field.
@@ -651,14 +649,14 @@ func (p *Process) SysRecvmsg(fd int, iov, control []byte, flags int) (int, int, 
 	var controln uint64
 	err = binary.Read(buf, nativeEndian, &controln) // Controllen field.
 	if err != nil {
-		return int(res), 0, 0, errors.WithMessage(err, "sys recvmsg")
+		return int(res), 0, 0, errors.WithMessage(err, "sys recvmsg") //nolint:gosec
 	}
 	var recvflags int32
 	err = binary.Read(buf, nativeEndian, &recvflags) // Flags field.
 	if err != nil {
-		return int(res), 0, 0, errors.WithMessage(err, "sys recvmsg")
+		return int(res), 0, 0, errors.WithMessage(err, "sys recvmsg") //nolint:gosec
 	}
-	return int(res), int(controln), int(recvflags), nil
+	return int(res), int(controln), int(recvflags), nil //nolint:gosec
 }
 
 // Low-level call of a system call in the process. Use doSyscall instead.
@@ -709,7 +707,7 @@ func (p *Process) syscall(useMemory bool, call int, args func(start uint64) ([]b
 
 		payloadLength = alignMemory(uint64(len(payload)))
 		// TODO: What if payload is so large that it hits the end of the data section?
-		originalInstructions, err = p.readData(uintptr(start), int(payloadLength)+len(syscallInstruction))
+		originalInstructions, err = p.readData(uintptr(start), int(payloadLength)+len(syscallInstruction)) //nolint:gosec
 		if err != nil {
 			errors.Details(err)["call"] = call
 			return uint64(errorReturn), err

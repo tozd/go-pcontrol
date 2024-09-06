@@ -613,7 +613,7 @@ func (p *Process) SysSendmsg(fd int, iov, control []byte, flags int) (int, int, 
 
 // SysRecvmsg invokes recvmsg syscall in the (attached) process.
 //
-//nolint:gomnd
+//nolint:mnd
 func (p *Process) SysRecvmsg(fd int, iov, control []byte, flags int) (int, int, int, errors.E) {
 	var payload []byte
 	res, errE := p.doSyscall(true, unix.SYS_RECVMSG, func(start uint64) ([]byte, [6]uint64, errors.E) {

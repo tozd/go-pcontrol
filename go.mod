@@ -1,6 +1,8 @@
 module gitlab.com/tozd/go/pcontrol
 
-go 1.18
+go 1.23
+
+toolchain go1.23.1
 
 require (
 	github.com/google/uuid v1.3.0

@@ -171,11 +171,11 @@ func TestGetFds(t *testing.T) {
 		}
 	})
 
-	equal, err := EqualFds(hostFds[0], int(stdoutWriter1.Fd())) //nolint:gosec
+	equal, err := EqualFds(hostFds[0], int(stdoutWriter1.Fd()))
 	require.NoError(t, err, "% -+#.1v", err)
 	assert.True(t, equal)
 
-	equal, err = EqualFds(hostFds[1], int(stderrWriter1.Fd())) //nolint:gosec
+	equal, err = EqualFds(hostFds[1], int(stderrWriter1.Fd()))
 	require.NoError(t, err, "% -+#.1v", err)
 	assert.True(t, equal)
 }
@@ -213,9 +213,9 @@ func TestSetFd(t *testing.T) {
 		}
 	})
 
-	err = p.SetFd(int(stdoutWriter2.Fd()), 1) //nolint:gosec
+	err = p.SetFd(int(stdoutWriter2.Fd()), 1)
 	require.NoError(t, err, "% -+#.1v", err)
-	err = p.SetFd(int(stderrWriter2.Fd()), 2) //nolint:gosec
+	err = p.SetFd(int(stderrWriter2.Fd()), 2)
 	require.NoError(t, err, "% -+#.1v", err)
 
 	require.NoError(t, p.Detach(), "% -+#.1v", err)

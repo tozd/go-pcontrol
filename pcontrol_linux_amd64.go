@@ -41,7 +41,7 @@ func newSyscallRegs(originalRegs *processRegs, ip uint64, call int, arg0, arg1, 
 	newRegs.R10 = arg3
 	newRegs.R8 = arg4
 	newRegs.R9 = arg5
-	newRegs.Rax = uint64(call)
+	newRegs.Rax = uint64(call) //nolint:gosec
 	return newRegs
 }
 

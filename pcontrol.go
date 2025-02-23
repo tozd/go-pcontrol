@@ -74,7 +74,7 @@ func newMsghrd(start uint64, iov, control []byte) (uint64, []byte, errors.E) {
 	if e != nil {
 		return 0, nil, errors.WithStack(e)
 	}
-	offset := uint64(buf.Len())
+	offset := uint64(buf.Len()) //nolint:gosec
 	// We build unix.Msghdr in the buffer.
 	// Name field. Null pointer.
 	e = binary.Write(buf, nativeEndian, uint64(0))
@@ -122,7 +122,7 @@ func newMsghrd(start uint64, iov, control []byte) (uint64, []byte, errors.E) {
 		return 0, nil, errors.WithStack(e)
 	}
 	// Sanity check.
-	if uint64(buf.Len())-offset != uint64(unsafe.Sizeof(unix.Msghdr{})) { //nolint:exhaustruct
+	if uint64(buf.Len())-offset != uint64(unsafe.Sizeof(unix.Msghdr{})) { //nolint:exhaustruct,gosec
 		panic(errors.New("msghdr in buffer does not match the size of msghdr"))
 	}
 	return offset, buf.Bytes(), nil
@@ -441,7 +441,7 @@ func (p *Process) allocateMemory() (uint64, errors.E) {
 			p.memorySize(), // length.
 			unix.PROT_EXEC | unix.PROT_READ | unix.PROT_WRITE, // prot.
 			unix.MAP_PRIVATE | unix.MAP_ANONYMOUS,             // flags.
-			uint64(fd),                                        // fd.
+			uint64(fd),                                        //nolint:gosec // fd.
 			0,                                                 // offset.
 		}, nil
 	})
@@ -474,9 +474,9 @@ func (p *Process) SysGetpid() (int, errors.E) {
 func (p *Process) SysSocket(domain, typ, proto int) (int, errors.E) {
 	fd, err := p.doSyscall(true, unix.SYS_SOCKET, func(_ uint64) ([]byte, [6]uint64, errors.E) {
 		return nil, [6]uint64{
-			uint64(domain), // domain.
-			uint64(typ),    // type.
-			uint64(proto),  // protocol.
+			uint64(domain), //nolint:gosec // domain.
+			uint64(typ),    //nolint:gosec // type.
+			uint64(proto),  //nolint:gosec // protocol.
 		}, nil
 	})
 	return int(fd), errors.WithMessage(err, "sys socket") //nolint:gosec
@@ -486,7 +486,7 @@ func (p *Process) SysSocket(domain, typ, proto int) (int, errors.E) {
 func (p *Process) SysClose(fd int) errors.E {
 	_, err := p.doSyscall(true, unix.SYS_CLOSE, func(_ uint64) ([]byte, [6]uint64, errors.E) {
 		return nil, [6]uint64{
-			uint64(fd), // fd.
+			uint64(fd), //nolint:gosec // fd.
 		}, nil
 	})
 	return errors.WithMessage(err, "sys close")
@@ -496,8 +496,8 @@ func (p *Process) SysClose(fd int) errors.E {
 func (p *Process) SysListen(fd, backlog int) errors.E {
 	_, err := p.doSyscall(true, unix.SYS_LISTEN, func(_ uint64) ([]byte, [6]uint64, errors.E) {
 		return nil, [6]uint64{
-			uint64(fd),      // sockfd.
-			uint64(backlog), // backlog.
+			uint64(fd),      //nolint:gosec // sockfd.
+			uint64(backlog), //nolint:gosec // backlog.
 		}, nil
 	})
 	return errors.WithMessage(err, "sys listen")
@@ -507,10 +507,10 @@ func (p *Process) SysListen(fd, backlog int) errors.E {
 func (p *Process) SysAccept(fd, flags int) (int, errors.E) {
 	connFd, err := p.doSyscall(true, unix.SYS_ACCEPT4, func(_ uint64) ([]byte, [6]uint64, errors.E) {
 		return nil, [6]uint64{
-			uint64(fd),    // sockfd.
+			uint64(fd),    //nolint:gosec // sockfd.
 			0,             // addr.
 			0,             // addrlen.
-			uint64(flags), // flags.
+			uint64(flags), //nolint:gosec // flags.
 		}, nil
 	})
 	return int(connFd), errors.WithMessage(err, "sys accept") //nolint:gosec
@@ -520,8 +520,8 @@ func (p *Process) SysAccept(fd, flags int) (int, errors.E) {
 func (p *Process) SysDup3(oldFd, newFd int) errors.E {
 	_, err := p.doSyscall(true, unix.SYS_DUP3, func(_ uint64) ([]byte, [6]uint64, errors.E) {
 		return nil, [6]uint64{
-			uint64(oldFd), // oldfd.
-			uint64(newFd), // newfd.
+			uint64(oldFd), //nolint:gosec // oldfd.
+			uint64(newFd), //nolint:gosec // newfd.
 			0,             // flags.
 		}, nil
 	})
@@ -575,12 +575,12 @@ func (p *Process) connectOrBindUnix(call int, name string, fd int, path string) 
 			}
 		}
 		// Sanity check.
-		if uint64(buf.Len()) > uint64(unsafe.Sizeof(unix.RawSockaddrUnix{})) { //nolint:exhaustruct
+		if uint64(buf.Len()) > uint64(unsafe.Sizeof(unix.RawSockaddrUnix{})) { //nolint:exhaustruct,gosec
 			panic(errors.New("path too long"))
 		}
 		payload := buf.Bytes()
 		return payload, [6]uint64{
-			uint64(fd),           // sockfd.
+			uint64(fd),           //nolint:gosec // sockfd.
 			start,                // addr.
 			uint64(len(payload)), // addrlen.
 		}, nil
@@ -598,9 +598,9 @@ func (p *Process) SysSendmsg(fd int, iov, control []byte, flags int) (int, int, 
 		}
 		payload = pl
 		return payload, [6]uint64{
-			uint64(fd),     // sockfd.
+			uint64(fd),     //nolint:gosec // sockfd.
 			start + offset, // msg.
-			uint64(flags),  // flags.
+			uint64(flags),  //nolint:gosec // flags.
 		}, nil
 	})
 	if err != nil {
@@ -621,9 +621,9 @@ func (p *Process) SysRecvmsg(fd int, iov, control []byte, flags int) (int, int, 
 		}
 		payload = pl
 		return payload, [6]uint64{
-			uint64(fd),     // sockfd.
+			uint64(fd),     //nolint:gosec // sockfd.
 			start + offset, // msg.
-			uint64(flags),  // flags.
+			uint64(flags),  //nolint:gosec // flags.
 		}, nil
 	})
 	if errE != nil {
@@ -665,14 +665,14 @@ func (p *Process) SysRecvmsg(fd int, iov, control []byte, flags int) (int, int, 
 // to false only to obtain and free such memory.)
 func (p *Process) syscall(useMemory bool, call int, args func(start uint64) ([]byte, [6]uint64, errors.E)) (result uint64, err errors.E) { //nolint:nonamedreturns
 	if useMemory && p.memoryAddress == 0 {
-		return uint64(errorReturn), errors.WithDetails(ErrProcessNotAttached, "pid", p.Pid)
+		return uint64(errorReturn), errors.WithDetails(ErrProcessNotAttached, "pid", p.Pid) //nolint:gosec
 	}
 
 	var originalRegs processRegs
 	originalRegs, err = getProcessRegs(p.Pid)
 	if err != nil {
 		errors.Details(err)["call"] = call
-		return uint64(errorReturn), err
+		return uint64(errorReturn), err //nolint:gosec
 	}
 
 	var start uint64
@@ -685,12 +685,12 @@ func (p *Process) syscall(useMemory bool, call int, args func(start uint64) ([]b
 		payload, arguments, err = args(p.memoryAddress)
 		if err != nil {
 			errors.Details(err)["call"] = call
-			return uint64(errorReturn), err
+			return uint64(errorReturn), err //nolint:gosec
 		}
 		payloadLength = alignMemory(uint64(len(payload)))
 		availableMemory := p.memorySize() - uint64(len(syscallInstruction))
 		if payloadLength > availableMemory {
-			return uint64(errorReturn), errors.WithDetails(
+			return uint64(errorReturn), errors.WithDetails( //nolint:gosec
 				ErrOutOfMemory,
 				"call", call,
 				"payload", payloadLength,
@@ -702,7 +702,7 @@ func (p *Process) syscall(useMemory bool, call int, args func(start uint64) ([]b
 		payload, arguments, err = args(start)
 		if err != nil {
 			errors.Details(err)["call"] = call
-			return uint64(errorReturn), err
+			return uint64(errorReturn), err //nolint:gosec
 		}
 
 		payloadLength = alignMemory(uint64(len(payload)))
@@ -710,7 +710,7 @@ func (p *Process) syscall(useMemory bool, call int, args func(start uint64) ([]b
 		originalInstructions, err = p.readData(uintptr(start), int(payloadLength)+len(syscallInstruction)) //nolint:gosec
 		if err != nil {
 			errors.Details(err)["call"] = call
-			return uint64(errorReturn), err
+			return uint64(errorReturn), err //nolint:gosec
 		}
 	}
 
@@ -735,14 +735,14 @@ func (p *Process) syscall(useMemory bool, call int, args func(start uint64) ([]b
 	err = p.writeData(uintptr(start), payload)
 	if err != nil {
 		errors.Details(err)["call"] = call
-		return uint64(errorReturn), err
+		return uint64(errorReturn), err //nolint:gosec
 	}
 
 	instructionPointer := start + payloadLength
 	err = p.writeData(uintptr(instructionPointer), syscallInstruction[:])
 	if err != nil {
 		errors.Details(err)["call"] = call
-		return uint64(errorReturn), err
+		return uint64(errorReturn), err //nolint:gosec
 	}
 
 	newRegs := newSyscallRegs(&originalRegs, instructionPointer, call, arguments[0], arguments[1], arguments[2], arguments[3], arguments[4], arguments[5])
@@ -750,25 +750,25 @@ func (p *Process) syscall(useMemory bool, call int, args func(start uint64) ([]b
 	err = setProcessRegs(p.Pid, &newRegs)
 	if err != nil {
 		errors.Details(err)["call"] = call
-		return uint64(errorReturn), err
+		return uint64(errorReturn), err //nolint:gosec
 	}
 
 	err = p.runToBreakpoint()
 	if err != nil {
 		errors.Details(err)["call"] = call
-		return uint64(errorReturn), err
+		return uint64(errorReturn), err //nolint:gosec
 	}
 
 	var resultRegs processRegs
 	resultRegs, err = getProcessRegs(p.Pid)
 	if err != nil {
 		errors.Details(err)["call"] = call
-		return uint64(errorReturn), err
+		return uint64(errorReturn), err //nolint:gosec
 	}
 
 	resReg := getSyscallResultReg(&resultRegs)
 	if resReg > maxErrno {
-		return uint64(errorReturn), errors.WithDetails(
+		return uint64(errorReturn), errors.WithDetails( //nolint:gosec
 			unix.Errno(-resReg),
 			"call", call,
 		)
@@ -777,7 +777,7 @@ func (p *Process) syscall(useMemory bool, call int, args func(start uint64) ([]b
 	newPayload, err := p.readData(uintptr(start), len(payload))
 	if err != nil {
 		errors.Details(err)["call"] = call
-		return uint64(errorReturn), err
+		return uint64(errorReturn), err //nolint:gosec
 	}
 	copy(payload, newPayload)
 
